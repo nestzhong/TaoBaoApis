@@ -326,7 +326,7 @@ class taobaoLive:
 
 
 if __name__ == '__main__':
-    cookies_str = r''
+    cookies_str = r'cookie2=12ccac29b433788e7d48d8f3ddc0a394; cna=UT7TIrr7qU0CATpk5PPqsndz; _hvn_lgc_=0; havana_lgc2_0=eyJoaWQiOjkwMjcyOTg1LCJzZyI6ImNiZGJkODY2MjFlOTFjY2Q5MzliYjNkNzQ5MmQxZGQzIiwic2l0ZSI6MCwidG9rZW4iOiIxbjREWFNTbS10dEs5OVRFV3lJWndUZyJ9; lgc=zlf19911123; cancelledSubSites=empty; dnk=zlf19911123; tracknick=zlf19911123; _cc_=V32FPkk%2Fhw%3D%3D; unb=90272985; uc1=cookie16=VFC%2FuZ9az08KUQ56dCrZDlbNdA%3D%3D&existShop=false&cookie15=U%2BGCWk%2F75gdr5Q%3D%3D&cookie14=UoYWNLkX3DiOVA%3D%3D&pas=0&cookie21=Vq8l%2BKCLjhS4UhJVbhgU; uc3=lg2=URm48syIIVrSKA%3D%3D&vt3=F8dD1fb8ieFmwEEQkTM%3D&id2=WvA21eIU1QY%3D&nk2=GcTgxsMvxSD3gzc%3D; csg=7cfd5d56; cookie17=WvA21eIU1QY%3D; skt=46858c16327ce6c4; existShop=MTc4OTM0ODA2Mg%3D%3D; uc4=id4=0%40WDf%2Bpy1gYKZhH78%2BeIlJ4GJXIg%3D%3D&nk4=0%40Gw33nLMkGH3YwL0a3gj43ig9wzL%2Fsw%3D%3D; _l_g_=Ug%3D%3D; sg=359; _nk_=zlf19911123; cookie1=VW9KHevtuAcpaxwG3s%2F1e3L6Or83NoJpB1W4C6HYcpI%3D; sgcookie=E100rJnPQtXoHEMC5EbcGAR9ExD7BTxk5cqtTDhEWtkHVqc8w3BdiSJIlnR0%2FHsSjii1vRHT%2BZquf3rRdSZ3ur4M70iVOzXAxWewjwFOOHcZ6KIgjm9Oe2ZpDNnfobIIiId%2F; _tb_token_=f4b3ebe6913e1; mt_partitioned_detect=1; _m_h5_tk=82f651b1494a80b0e00ca8f28cba2c73_1789880458418; _m_h5_tk_enc=25c65c6fbdc0eeaecd3295597970b8d9; _samesite_flag_=true; havana_lgc_exp=1820974379364; sdkSilent=1789899179364; havana_sdkSilent=1789899179364; _3dtid=GVjKIbjf%2BJkBjZnTnwu9vF%2BGem%2BvQOpnuL9X%2FJWwtettSvE1JbZ9Icx%2FaIj89N1z; isg=BK-vcq6RGYnJHBDAzQOMWkwGPsW5VAN2ULLCC8E8S54lEM8SySSTxq3SkAAuc9vu; sca=87c60165; is-expand-skupanel-skudecision=false; sn=; login=true'
     taobaoLive = taobaoLive(cookies_str)
 
     # 2 获取全部聊天记录

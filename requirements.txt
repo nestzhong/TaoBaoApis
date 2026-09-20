@@ -1,2 +1,7 @@
 requests
 loguru
+websockets>=12,<14
+PyExecJS
+blackboxprotobuf
+pydantic
+typing_extensions
