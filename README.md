@@ -31,17 +31,35 @@
 
 ## 已实现功能
 
+### WebSocket 消息通信
+
 | 模块 | 功能 | 状态 |
 |------|------|------|
-| HTTP API | 淘宝所有 HTTP 接口（sign 签名已解密） | ✅ |
 | WebSocket | 私信实时收发（sign + base64 + Protobuf 协议） | ✅ |
-| 消息类型 | 文字、图片消息 | ✅ |
+| 消息类型 | 文字、图片消息收发 | ✅ |
 | 会话管理 | 获取全部历史聊天记录 | ✅ |
 | 主动发送 | 主动向指定用户发消息 | ✅ |
 | Token 维持 | 自动刷新登录态，常驻进程不掉线 | ✅ |
-| 获取聊天记录 | 获取与指定用户的历史消息记录 | ✅ |
-| 商品信息 | 获取商品详情 | ✅ |
-| 媒体上传 | 上传图片并发送 | ✅ |
+
+### 买家端 HTTP API（MTOP 协议）
+
+| 接口 | 功能 | 状态 |
+|------|------|------|
+| `search_products()` | 商品搜索（含 DinamicX 解析） | ✅ 已验证 |
+| `get_cart_list()` | 获取购物车列表 | ✅ 已验证 |
+| `add_to_cart()` | 加入购物车 | ✅ |
+| `get_order_list()` | 订单列表（含 DinamicX 解析） | ✅ 已验证 |
+| `get_order_detail()` | 订单详情（通过订单列表回退查找） | ✅ |
+| `get_token()` | 刷新 AccessToken | ✅ 已验证 |
+| `get_goods_uid_encrypt_uid()` | 商品详情页解析 | ✅ |
+| `upload_media()` | 媒体上传 | ✅ |
+
+### 数据解析工具
+
+| 方法 | 功能 |
+|------|------|
+| `parse_search_results()` | 从 DinamicX 模板提取商品信息（item_id、标题、价格、店铺名、图片） |
+| `parse_order_list_results()` | 从 DinamicX 容器提取订单信息（状态、卖家、商品明细、价格） |
 
 ---
 
@@ -83,11 +101,15 @@ python taobao_live.py
 ```
 TaobaoApis/
 ├── taobao_live.py       # 主入口：WebSocket 消息监听 & 回复逻辑（在此接入 AI）
-├── taobao_apis.py       # HTTP API 封装（登录、刷新 Token、商品详情、上传媒体）
+├── taobao_apis.py       # HTTP API 封装（搜索、购物车、订单、登录、Token刷新、媒体上传）
+│                       #   - 搜索: search_products + parse_search_results
+│                       #   - 购物车: get_cart_list + add_to_cart
+│                       #   - 订单: get_order_list / get_order_detail + parse_order_list_results
+│                       #   - 认证: get_token / _ensure_token
 ├── message/
 │   ├── types.py         # 消息类型定义（TextContent / ImageContent / AudioContent）
 ├── utils/
-│   └── taobao_utils.py  # 工具函数（sign 签名、Cookie 处理、消息解密）
+│   └── taobao_utils.py  # 工具函数（sign 签名、Cookie 处理、消息解密、device_id 生成）
 ├── static/
 │   └── taobao_js_*.js   # 逆向 JS（sign 签名核心算法）
 ├── requirements.txt
@@ -117,8 +139,13 @@ async def handle_message(self, message, websocket):
 
 ## 注意事项
 
+## 注意事项
+
 - `taobao_live.py` 是消息收发主入口，所有 AI 回复逻辑在此扩展
 - `taobao_apis.py` 包含 HTTP 接口模板，可按需添加其他接口
+- Cookie 需包含 `_m_h5_tk`、`_m_h5_tk_enc`、`unb`、`_nk_`、`_tb_token_`、`cookie2`、`cna` 等关键字段
+- 买家端 MTOP 接口在 Token 过期时会自动调用 `get_token()` 刷新（通过 `_ensure_token()` 机制）
+- 搜索、购物车、订单列表返回的 DinamicX/Weex 容器数据可由对应 `parse_*_results()` 方法解析为结构化数据
 
 ---
 
