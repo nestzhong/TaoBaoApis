@@ -11,6 +11,7 @@ import time
 
 import requests
 
+from builder.auth import TaobaoAuth
 from utils.taobao_utils import generate_sign, trans_cookies, generate_device_id
 
 
@@ -27,18 +28,36 @@ BUYER_HEADERS = {
 
 
 class TaobaoApis:
-    def __init__(self, cookies, device_id):
+    def __init__(self, cookies=None, device_id=None, auth=None):
         self.login_url = 'https://h5api.m.taobao.com/h5/mtop.taobao.login.token.get.h5/2.0/'
         self.upload_media_url = 'https://stream-upload.taobao.com/api/upload.api'
         self.refresh_token_url = 'https://h5api.m.goofish.com/h5/mtop.taobao.idlemessage.pc.loginuser.get/1.0/'
         self.item_detail_url = 'https://h5api.m.goofish.com/h5/mtop.taobao.idle.pc.detail/1.0/'
         self.reset_login_info_url = 'https://passport.goofish.com/newlogin/hasLogin.do'
+        if auth:
+            self.auth = auth
+        else:
+            self.auth = TaobaoAuth()
+            if cookies:
+                if isinstance(cookies, str):
+                    self.auth.prepare_auth(cookies)
+                else:
+                    self.auth.update_cookies(cookies)
+                if device_id:
+                    self.auth.device_id = device_id
+                else:
+                    self.auth.ensure_device_id()
         self.session = requests.Session()
         self.session.trust_env = False
-        self.session.cookies.update(cookies)
-        self.device_id = device_id
-        self.cookies = {}
+        self.session.cookies.update(self.auth.cookie)
+        self.device_id = self.auth.device_id
         self._token_refreshed = False
+
+    def _sync_auth_to_session(self):
+        self.auth.update_cookies(self.session.cookies.get_dict())
+
+    def _sync_session_to_auth(self):
+        self.session.cookies.update(self.auth.cookie)
 
     def _ensure_token(self):
         if self._token_refreshed:
@@ -67,6 +86,7 @@ class TaobaoApis:
         return json.loads(text)
 
     def _mtop_request(self, api, version, data, data_in_url=True, referer=None, ttid="600000@taobao_android_10.7.0", extra_params=None):
+        self._sync_auth_to_session()
         t, sign, data_str = self._sign_data(data)
         url = f'https://h5api.m.taobao.com/h5/mtop.{api}/{version}/'
 
@@ -101,6 +121,8 @@ class TaobaoApis:
         else:
             response = self.session.post(url, params=params, data={"data": data_str}, headers=headers, verify=False)
 
+        response.cookies.set('domain', '.taobao.com')
+        self.auth.absorb_response(response, session=self.session)
         return self._parse_jsonp(response.text)
 
     def search_products(self, keyword, page_no=1, page_size=20, sort=None):
@@ -183,11 +205,17 @@ class TaobaoApis:
         data = {"itemId": str(item_id), "quantity": quantity, "dataformat": "dataformat_ultron_h5"}
         if sku_id:
             data["skuId"] = str(sku_id)
-        return self._mtop_request(
+        res = self._mtop_request(
             "trade.cart.add", "1.0", data, data_in_url=False,
             referer="https://main.m.taobao.com/", ttid="h5",
             extra_params={"isSec": "0", "ecode": "1"},
         )
+        if res.get("ret", [""])[0] == "FAIL_SYS_API_NOT_FOUNDED::请求API不存在":
+            raise NotImplementedError(
+                "加购 API (trade.cart.add) 在当前 appKey 下不可用。"
+                "请直接在浏览器中操作购物车。"
+            )
+        return res
 
     def get_order_list(self, page_no=1, page_size=10, status=None):
         tab_code = status or "all"
@@ -293,6 +321,7 @@ class TaobaoApis:
         return {"ret": ["FAIL::订单不存在"], "data": {}}
 
     def get_token(self):
+        self._sync_auth_to_session()
         headers = {
             "accept": "*/*",
             "accept-language": "en,zh-CN;q=0.9,zh;q=0.8,zh-TW;q=0.7,ja;q=0.6",
@@ -319,9 +348,9 @@ class TaobaoApis:
             "dataType": "jsonp",
             "callback": "mtopjsonp3",
         }
-        data_val = '{"domain":"cntaobao","deviceId":"' + self.device_id + '","locale":"zh_CN","imAppKey":"3ce2dacdc7c0c43ad7bc7f9bc7d7a1b8"}'
+        data_val = '{"domain":"cntaobao","deviceId":"' + (self.device_id or '') + '","locale":"zh_CN","imAppKey":"3ce2dacdc7c0c43ad7bc7f9bc7d7a1b8"}'
         params["data"] = data_val
-        token = self.session.cookies['_m_h5_tk'].split('_')[0]
+        token = self.auth.sign_token
         sign = generate_sign(params['t'], token, data_val)
         params['sign'] = sign
         response = self.session.get(self.login_url, params=params, headers=headers, verify=False)
@@ -331,6 +360,7 @@ class TaobaoApis:
                     if key.name == response_cookie_key and key.domain == '' and key.path == '/':
                         self.session.cookies.clear(domain=key.domain, path=key.path, name=key.name)
                         break
+        self.auth.absorb_response(response, session=self.session, persist=True)
         res_text = response.text
         res_text = re.findall(r' mtopjsonp3\((.*)\)', res_text)[0]
         res_json = json.loads(res_text)
@@ -340,6 +370,7 @@ class TaobaoApis:
 
     # 类似于 https://detail.tmall.com/item.htm?id=806319949537&mi_id=0000vtiP2t7OiKuXSFJ6Os3CycYK4LfNyLsSkxffiJKUvKY&pvid=e2456346-6c21-490b-8792-abbcafc52e3a&scm=1007.40986.467924.0&skuId=5652727063890&spm=a21bo.jianhua%2Fa.201876.d12.78632a89Xn5WRG&utparam=%7B%22item_ctr%22%3A0.05020460486412048%2C%22x_object_type%22%3A%22item%22%2C%22matchType%22%3A%22nann_base%22%2C%22item_price%22%3A%222.5%22%2C%22item_cvr%22%3A0.043365806341171265%2C%22umpCalled%22%3Atrue%2C%22pc_ctr%22%3A0.009324726648628712%2C%22pc_scene%22%3A%2220001%22%2C%22userId%22%3A3888777108%2C%22ab_info%22%3A%2230986%23467924%230_30986%23528214%2358507_30986%23527806%2358418_30986%23537217%2360408_30986%23521582%2357267_30986%23543870%2358189_30986%23533297%2359487_30986%23528945%2357910_30986%23530923%2359037_30986%23532805%2359017_30986%23528109%2358485_30986%23537488%2360469_30986%23537987%2360586_30986%23538037%2360595%22%2C%22tpp_buckets%22%3A%2230986%23467924%230_30986%23528214%2358507_30986%23527806%2358418_30986%23537217%2360408_30986%23521582%2357267_30986%23543870%2358189_30986%23533297%2359487_30986%23528945%2357910_30986%23530923%2359037_30986%23532805%2359017_30986%23528109%2358485_30986%23537488%2360469_30986%23537987%2360586_30986%23538037%2360595%22%2C%22aplus_abtest%22%3A%2215c0e693256f7b7c9626be50c2718cbe%22%2C%22isLogin%22%3Atrue%2C%22abid%22%3A%22528214_527806_537217_521582_543870_533297_528945_530923_532805_528109_537488_537987_538037%22%2C%22pc_pvid%22%3A%22e2456346-6c21-490b-8792-abbcafc52e3a%22%2C%22isWeekLogin%22%3Afalse%2C%22pc_alg_score%22%3A0.0932632202314%2C%22rn%22%3A11%2C%22item_ecpm%22%3A0%2C%22ump_price%22%3A%222.5%22%2C%22isXClose%22%3Afalse%2C%22x_object_id%22%3A806319949537%7D&xxc=home_recommend
     def get_goods_uid_encrypt_uid(self, goods_url):
+        self._sync_auth_to_session()
         headers = {
             "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
             "accept-language": "en",
@@ -358,6 +389,7 @@ class TaobaoApis:
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"
         }
         response = self.session.get(goods_url, headers=headers, verify=False)
+        self.auth.absorb_response(response, session=self.session)
         res_text = response.text
         uid = re.findall(r'"userId":"(.*?)"', res_text)[0]
         encrypt_uid = re.findall(r'data-encryptuid="(.*?)"', res_text)[0]
@@ -367,6 +399,7 @@ class TaobaoApis:
         }
 
     def upload_media(self, media_path):
+        self._sync_auth_to_session()
         headers = {
             "Accept": "*/*",
             "Accept-Language": "en,zh-CN;q=0.9,zh;q=0.8,zh-TW;q=0.7,ja;q=0.6",
@@ -397,13 +430,15 @@ class TaobaoApis:
                 "file": (media_name, f, "image/png")
             }
             response = self.session.post(self.upload_media_url, headers=headers, params=params, files=files, verify=False)
+            self.auth.absorb_response(response, session=self.session)
             res_json = response.json()
             return res_json
 
 if __name__ == '__main__':
-    cookies_str = r'...'
-    cookies = trans_cookies(cookies_str)
-    taobao = TaobaoApis(cookies, generate_device_id(cookies['unb']))
+    from builder.auth import TaobaoAuth
+    auth = TaobaoAuth.from_env()
+    cookies = auth.cookie
+    taobao = TaobaoApis(auth=auth)
 
     # 商品搜索（MTOP 接口，需 TSDK 完整初始化流以绕过风控）
     # res = taobao.search_products("手机", page_no=1, page_size=10)
